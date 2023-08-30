@@ -19,7 +19,8 @@ func Hello(name string) (string, error) {
 }
 
 // Hellos returns a map that associates each of the named people
-// with a greeting message.
+// with a greeting message. Argument is passed as a value, you need the * to pass
+// it as a reference
 func Hellos(names []string) (map[string]string, error) {
 	// A map to associate names with messages. In Go, you initialize a map with the following
 	// syntax: make(map[key-type]value-type)
