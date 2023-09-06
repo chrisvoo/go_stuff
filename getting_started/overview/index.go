@@ -28,12 +28,43 @@ func prettyPrint(t TestStruct) {
 	fmt.Printf("%s\n", jsonData)
 }
 
+func newTopic(topic string) {
+	fmt.Printf("%s -----------------------\n", topic)
+}
+
+func endTopic() {
+	fmt.Printf("\n")
+}
+
 // A main function executes by default when you run the main package.
 func main() {
+	newTopic("Struct")
 	testVar := TestStruct{Sample: "aa", SampleInt: 1}
 	fmt.Printf("%+v\n", testVar)
 	testVar.ChangeSample("bb")
 	prettyPrint(testVar)
+	endTopic()
+
+	newTopic("Loop")
+	tasks()
+	endTopic()
+
+	newTopic("Interfaces")
+	l := LoveMessagePrinter{}
+	PrintSomething(l)
+	endTopic()
+
+	newTopic("go verb")
+	goVerb()
+	endTopic()
+
+	newTopic("go verb - wait for all")
+	waitForAll()
+	endTopic()
+
+	newTopic("channels")
+	pong()
+	endTopic()
 }
 
 /* output

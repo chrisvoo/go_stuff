@@ -6,11 +6,15 @@ import (
 	"math/rand"
 )
 
+// visibility: public can be done by capitalizing the first character of
+// the function or the property.
+
 // Hello returns a greeting for the named person.
 // Any Go function can return multiple values.
 func Hello(name string) (string, error) {
 	// If no name was given, return an error with a message.
 	if name == "" {
+		// fmt.Errorf("This is an example error: %v", "empty name")
 		return "", errors.New("empty name")
 	}
 	// shortcut for declaring and initializing a variable in one line (var message string)

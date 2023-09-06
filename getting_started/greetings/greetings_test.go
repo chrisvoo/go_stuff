@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-// Test function names have the form TestName
+// Test function names have the form TestName.
 
 // TestHelloName calls greetings.Hello with a name, checking
 // for a valid return value.
