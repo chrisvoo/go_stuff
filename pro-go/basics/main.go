@@ -2,20 +2,15 @@ package main
 
 // By default, the package reference is assigned the name of the package
 import (
+	"encoding/json"
 	"fmt"
 	"math"
 	"math/rand"
 	"reflect"
 	"sort"
 	"strconv"
+	"strings"
 )
-
-// this line disables linting for all the following statements. Just replace disable with enable to
-// re-enable the rule for the rest of the file
-// revive:disable:exported
-func PrintNumber(number int) {
-	fmt.Println(number)
-}
 
 func main() {
 
@@ -240,8 +235,7 @@ target:
 	texts = append(texts, "Hat")
 	appendedTexts := append(texts, "Gloves")
 	// In Go, slices are references to arrays. When you modify the elements of a slice, you modify the underlying array,
-	// which can be shared by multiple slices. In this case, both texts and appendedTexts shared the same underlying array
-	// at the time texts[0] was modified, so the change is visible in both slices.
+	// which can be shared by multiple slices.
 	texts[0] = "Canoe"
 	fmt.Println("sliced texts:", texts)
 	fmt.Println("sliced appendedTexts:", appendedTexts)
@@ -341,4 +335,183 @@ target:
 	}
 
 	fmt.Println("\nDefining and Using Functions -------------------")
+	// Go does not support optional parameters or default values for parameters. It must be the last one
+	printPrice("Kayak", 275, 0.2)
+	printSuppliers("Kayak", "Acme Kayaks", "Bob's Boats", "Crazy Canoes")
+
+	stuff := []string{"Acme Kayaks", "Bob's Boats", "Crazy Canoes"}
+	printSuppliers("Kayak", stuff...) // expand slices for variadic args
+
+	// with pointers
+	value1, value2 := 10, 20
+	fmt.Println("Before calling function", value1, value2)
+	swapValues(&value1, &value2)
+	fmt.Println("After calling function", value1, value2)
+
+	// using a single result
+	productz := map[string]float64{
+		"Kayak":      275,
+		"Lifejacket": 48.95,
+	}
+	for product, price := range productz {
+		if taxAmount, taxDue := calcTax(price); taxDue {
+			fmt.Println("Product: ", product, "Tax:", taxAmount)
+		} else {
+			fmt.Println("Product: ", product, "No tax due")
+		}
+	}
+
+	// using multiple results
+	fmt.Println("Before calling function", value1, value2)
+	value1, value2 = swapValuesMultiResult(value1, value2)
+	fmt.Println("After calling function", value1, value2)
+
+	total1, tax1 := calcTotalPrice(productz, 10)
+	fmt.Println("Total 1:", total1, "Tax 1:", tax1)
+	total2, tax2 := calcTotalPrice(nil, 10)
+	fmt.Println("Total 2:", total2, "Tax 2:", tax2)
+
+	_, theTotal := calcGrandTotalPriceWithDefer(productz)
+	fmt.Println("Total:", theTotal)
+
+	fmt.Println("\nUnderstanding Function Types -------------------")
+	for product, price := range productz {
+		calcFunc := selectCalculator(price)
+		fmt.Println("Function assigned:", calcFunc == nil)
+		printPriceWithFunc(product, price, calcFunc)
+	}
+
+	watersportsProducts := map[string]float64{
+		"Kayak":      275,
+		"Lifejacket": 48.95,
+	}
+	soccerProducts := map[string]float64{
+		"Soccer Ball": 19.50,
+		"Stadium":     79500,
+	}
+	calc := func(price float64) float64 {
+		if price > 100 {
+			return price + (price * 0.2)
+		}
+		return price
+	}
+	for product, price := range watersportsProducts {
+		printPriceWithFunc(product, price, calc)
+	}
+
+	calc = func(price float64) float64 {
+		if price > 50 {
+			return price + (price * 0.1)
+		}
+		return price
+	}
+	for product, price := range soccerProducts {
+		printPriceWithFunc(product, price, calc)
+	}
+
+	/* Closure: When you declare a local variable, that variable has a scope. Generally, local variables exist
+	   only within the block or function in which you declare them. A closure is a persistent scope which holds on
+	   to local variables even after the code execution has moved out of that block.
+	*/
+	var prizeGiveaway = false
+	priceCalcFactory := func(threshold, rate float64) calcFunc {
+		return func(price float64) float64 {
+			if prizeGiveaway {
+				return 0
+			} else if price > threshold {
+				return price + (price * rate)
+			}
+			return price
+		}
+	}
+
+	prizeGiveaway = false
+	waterCalc := priceCalcFactory(100, 0.2)
+	prizeGiveaway = true
+	soccerCalc := priceCalcFactory(50, 0.1)
+	// The calculator function closes on the prizeGiveaway variable, and since closures are evaluated when the function is invoked,
+	// this causes the prices to drop to zero.
+	for product, price := range watersportsProducts {
+		printPriceWithFunc(product, price, waterCalc)
+	}
+	for product, price := range soccerProducts {
+		printPriceWithFunc(product, price, soccerCalc)
+	}
+
+	priceCalcFactory = func(threshold, rate float64) calcFunc {
+		// if you want to use the value that was current when the function was created, then copy the value.
+		// The same effect can also be achieved by adding a parameter to the factory function because function
+		// parameters are passed by value by default. You can also a pointer to the value (*fixedPrizeGiveway)
+		fixedPrizeGiveway := prizeGiveaway // Forcing Early Evaluation
+		return func(price float64) float64 {
+			if fixedPrizeGiveway {
+				return 0
+			} else if price > threshold {
+				return price + (price * rate)
+			}
+			return price
+		}
+	}
+	prizeGiveaway = false
+	waterCalc = priceCalcFactory(100, 0.2)
+	prizeGiveaway = true
+	soccerCalc = priceCalcFactory(50, 0.1)
+	for product, price := range watersportsProducts {
+		printPriceWithFunc(product, price, waterCalc)
+	}
+	for product, price := range soccerProducts {
+		printPriceWithFunc(product, price, soccerCalc)
+	}
+
+	fmt.Println("\nStructs -------------------")
+	type StockLevel struct {
+		Product
+		count int
+	}
+	// var kayak = Product { "Kayak", "Watersports", 275.00 }
+	stockItem := StockLevel{
+		Product: Product{"Kayak", "Watersports", 275.00},
+		count:   100,
+	}
+	fmt.Println("Name:", stockItem.Product.name)
+	fmt.Println("Count:", stockItem.count)
+	stockItem.Product.price = 300
+	fmt.Println("Changed price:", stockItem.Product.price)
+
+	// a pointer to a struct value whose fields are initialized with their type’s zero value
+	var lifejacket = new(Product)             // equivalent to var lifejacket = &Product{}
+	fmt.Println("Life jacket: ", *lifejacket) //just empty values
+
+	// Struct values are comparable if all their fields can be compared (not slices for example)
+	p1 := Product{name: "Kayak", category: "Watersports", price: 275.00}
+	p2 := Product{name: "Kayak", category: "Watersports", price: 275.00}
+	p3 := Product{name: "Kayak", category: "Boats", price: 275.00}
+	fmt.Println("p1 == p2:", p1 == p2)
+	fmt.Println("p1 == p3:", p1 == p3)
+
+	// A struct type can be converted into any other struct type that has the same fields, meaning
+	// all the fields have the same name and type and are defined in the same order eg Product(item)
+	var builder strings.Builder
+	json.NewEncoder(&builder).Encode(struct { // anonymous struct definition
+		ProductName  string
+		ProductPrice float64
+	}{
+		ProductName:  p1.name,
+		ProductPrice: p1.price,
+	})
+	fmt.Println("Struct to JSON: ", builder.String())
+
+	fmt.Println("\nUsing Methods and Interfaces -------------------")
+	productzz := ProductList{
+		{"Kayak", "Watersports", 275},
+		{"Lifejacket", "Watersports", 48.95},
+		{"Soccer Ball", "Soccer", 19.50},
+	}
+	for _, p := range productzz {
+		//printDetails(p)
+		p.printDetails()
+	}
+	for category, total := range productzz.calcCategoryTotals() {
+		fmt.Println("Category: ", category, "Total:", total)
+	}
 }
