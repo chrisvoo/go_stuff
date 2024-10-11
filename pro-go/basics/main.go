@@ -514,4 +514,94 @@ target:
 	for category, total := range productzz.calcCategoryTotals() {
 		fmt.Println("Category: ", category, "Total:", total)
 	}
+	fmt.Println()
+
+	expenses := []Expense{
+		Product{"Kayak", "Watersports", 275},
+		Service{"Boat Cover", 12, 89.50},
+	}
+	for _, expense := range expenses {
+		fmt.Println("Expense:", expense.getName(), "Cost:", expense.getCost(true))
+	}
+	fmt.Println()
+
+	/* The first two Expense values are not equal. That’s because the dynamic type for these
+	values is a pointer type, and pointers are equal only if they point to the same memory location.
+	The second two Expense values are equal because they are simple struct values with the same field values. */
+	var e1 Expense = &Product{name: "Kayak"}
+	var e2 Expense = &Product{name: "Kayak"}
+	var e3 Expense = Service{description: "Boat Cover"}
+	var e4 Expense = Service{description: "Boat Cover"}
+	fmt.Println("e1 == e2", e1 == e2)
+	fmt.Println("e3 == e4", e3 == e4)
+	fmt.Println()
+
+	expenses = []Expense{
+		Service{"Boat Cover", 12, 89.50},
+		Service{"Paddle Protect", 12, 8},
+	}
+	/*  it is often useful to be able to access the dynamic type directly,
+	which is known as type narrowing, the process of moving from a less precise type to a more precise type.
+	Type assertions can be applied only to interfaces, and they are used to tell the compiler that an interface
+	value has a specific dynamic type. Type conversions can be applied only to specific types, not interfaces,
+	and only if the structure of those types is compatible, such as converting between struct types that have
+	the same fields.*/
+	for _, expense := range expenses {
+		s := expense.(Service) // A type assertion is used to access the dynamic type of an interface value
+		fmt.Println("Service:", s.description, "Price:", s.monthlyFee*float64(s.durationMonths))
+	}
+
+	expenses = []Expense{
+		Service{"Boat Cover", 12, 89.50},
+		Service{"Paddle Protect", 12, 8},
+		&Product{"Kayak", "Watersports", 275},
+	}
+	for _, expense := range expenses {
+		if s, ok := expense.(Service); ok { // testing the assertion
+			fmt.Println("Service:", s.description, "Price:",
+				s.monthlyFee*float64(s.durationMonths))
+		} else {
+			fmt.Println("Expense:", expense.getName(),
+				"Cost:", expense.getCost(true))
+		}
+	}
+
+	// same thing as above
+	for _, expense := range expenses {
+		switch value := expense.(type) {
+		case Service:
+			fmt.Println("Service:", value.description, "Price:",
+				value.monthlyFee*float64(value.durationMonths))
+		case *Product:
+			fmt.Println("Product:", value.name, "Price:", value.price)
+		default:
+			fmt.Println("Expense:", expense.getName(),
+				"Cost:", expense.getCost(true))
+		}
+	}
+
+	var expense Expense = &Product{"Kayak", "Watersports", 275}
+	data := []interface{}{ // empty interface for mixed data
+		expense,
+		Product{"Lifejacket", "Watersports", 48.95},
+		Service{"Boat Cover", 12, 89.50},
+		"This is a string",
+		100,
+		true,
+	}
+	for _, item := range data {
+		switch value := item.(type) {
+		case Product:
+			fmt.Println("Product:", value.name, "Price:", value.price)
+		case *Product:
+			fmt.Println("Product Pointer:", value.name, "Price:", value.price)
+		case Service:
+			fmt.Println("Service:", value.description, "Price:",
+				value.monthlyFee*float64(value.durationMonths))
+		case string, bool, int:
+			fmt.Println("Built-in type:", value)
+		default:
+			fmt.Println("Default:", value)
+		}
+	}
 }

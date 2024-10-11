@@ -53,3 +53,15 @@ main.go:10:1: exported function PrintNumber should have comment or be unexported
 The reason that the linter is so strict about comments is because they are used by the `go doc` command, which generates documentation from source code comments. If you don’t want to apply a rule at all, then you can use [a TOML-format configuration file](https://github.com/mgechev/revive?tab=readme-ov-file#configuration).
 For VS Code it is easy to change the linter to revive using the Preferences ➤ Extensions ➤ Go ➤ Lint Tool configuration option. If you want to use a custom configuration file, use the Lint Flags configuration option to add a flag with the value -config=./revive.toml, which will select the revive.toml file.
 
+## Packages and modules
+
+* **define a package**: create a folder and add code files with `package` statements.
+* **use a package**: add an import statement that specifies the path to the package
+* **ACL to features in a package**: export features by using an initial uppercase letter in their names. Lowercase initial letters are unexpected and cannot be used outside the package
+* **package conflicts**: use an alias or a dot import.
+* **perform tasks when a package is loaded**: define an init function
+* **execute a package init function without importing the features in contains**: use the blank identifier import statement.
+* **use an external package**: use `go get` command
+* **Remove unused package dependencies**: use `go mod tidy`
+
+The name specified by the package statement should match the name of the folder in which the code files are created, which is store in this case.
