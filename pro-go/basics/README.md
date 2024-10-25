@@ -65,3 +65,34 @@ For VS Code it is easy to change the linter to revive using the Preferences ➤ 
 * **Remove unused package dependencies**: use `go mod tidy`
 
 The name specified by the package statement should match the name of the folder in which the code files are created, which is store in this case.
+
+The `go get` command adds dependencies to the go.mod file, but these are not removed automatically if the external package is no longer required. To update the go.mod file to reflect the change, run `go mod tidy`.
+
+## Channels and goroutines
+
+A **goroutine** is a lightweight thread. All Go programs use at least one goroutine because this is how Go executes the code in the main function. When compiled Go code is executed, the runtime creates a goroutine that starts executing the statements in the entry point, which is the main function in the main package. Each statement in the main function is executed in the order in which they are defined. The goroutine keeps executing statements until it reaches the end of the main function, at which point the application terminates.
+The goroutine executes each statement in the main function synchronously, which means that it waits for the statement to complete before moving on to the next statement.
+A goroutine allows to execute a function asynchronously. The result produced by such a function can be produced through a channel. Values can be sent and received using a channel through arrow expressions. The close function indicates that no
+further values will be sent over the channel.
+Go allows the developer to create additional goroutines, which execute code **at the same time** as the main goroutine.
+Getting a result from a function that is being executed asynchronously can be complicated because it requires coordination between the goroutine that produces the result and the goroutine that consumes the result. To address this issue, Go provides **channels**, which are conduits through which data can be sent and received.
+
+### Coordinating Channels
+
+Receiving from a channel is a **blocking operation**, meaning that execution will not continue until a value has been received. By default, sending and receiving through a channel are blocking operations. This means a goroutine that sends a value will not execute any further statements until another goroutine receives the value from the channel. If a second goroutine sends a value, it will be blocked until the channel is cleared, causing a queue of goroutines waiting for values to be received. This happens in the other direction, too, so that goroutines that receive values will block until another goroutine sends one.
+An alternative approach is to create **a channel with a buffer**, which is used to accept values from a sender and store them until a receiver becomes available. This makes sending a message a nonblocking operation, allowing a sender to pass its value to the channel and continue working without having to wait for a receiver.
+The `select` keyword is used to group operations that will send or receive from channels, which allows for complex arrangements of goroutines and channels to be created. The simplest use for select statements is to **receive from a channel without blocking**, ensuring that a goroutine won’t have to wait when the channel is empty. Care must be taken to manage closed channels because they will provide a nil value for every receive operation that occurs after the channel has closed, relying on the closed indicator to show that the channel is closed. Unfortunately, this means that case statements for closed channels will always be chosen by select statements because they are always ready to provide a value without blocking, even though that value isn't useful. Managing closed channels requires two measures:
+* to prevent the select statement from choosing a channel once it is closed by nullifying the channel variable. A nil channel is never ready and will not be chosen, allowing the select statement to move onto other case statements
+* to break out of the for loop when all the channels are closed, without which the select statement would endlessly execute the default clause.
+
+You can combine case statements with send and receive operations in the same select statement. When the select statement is executed, the Go runtime builds a combined list of case statements that can be executed without blocking and picks one at random, which can be either a send or a receive statement.
+
+## Errors handling
+
+If a function is being executed using a goroutine, then the only communication is through the channel, which means that details of any problems must be communicated alongside successful operations. An approach is to create a custom type that consolidates both outcomes.
+In alternative, the `errors` package, which is part of the standard library, provides a `New` function that returns an error whose content is a string. The drawback of this approach is that it creates simple errors.
+
+### panic
+
+Some errors are so serious they should lead to the immediate termination of the application, a process known as panicking. When the panic function is called, the execution of the enclosing function is halted, and any defer functions are performed. The panic bubbles up through the call stack, terminating execution of the calling functions and invoking their defer functions. Go provides the built-in function `recover`, which can be called to stop a panic from working its way up the call stack and terminating the program.  
+A panic works its way up the stack only to the top of the current goroutine, at which point it causes termination of the application. This restriction means that **panics must be recovered within the code that a goroutine executes**.
