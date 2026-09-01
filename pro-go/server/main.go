@@ -13,6 +13,7 @@ type Rsvp struct {
 }
 
 /*
+https://pkg.go.dev/builtin@go1.25.6#make
 make allocates an underlying array of size 10 and returns a slice of length 0 and
 capacity 10 that is backed by this underlying array.
 A slice is a variable-length array. Slices are resized automatically as new items
@@ -29,6 +30,7 @@ func loadTemplates() {
 	templateNames := [5]string{"welcome", "form", "thanks", "sorry", "list"}
 	// The range keyword is used with the for keyword to enumerate arrays, slices, and maps.
 	for index, name := range templateNames {
+	    // https://pkg.go.dev/html/template#ParseFiles
 		t, err := template.ParseFiles("templates/layout.html", "templates/"+name+".html")
 		if err == nil {
 			templates[name] = t

@@ -1,13 +1,20 @@
 # Basics
 
-The `go fmt` command will remove semicolons and adjust other formatting issues. The `go build` command compiles Go source code and produces an executable. To remove the output from the compilation process, run `go clean`.
-The reason that most projects start with the `go mod init` command is that it simplifies the build process. Instead of specifying a particular code file, the project can be built and executed using a period, indicating the project in the current directory.
-The `go vet` command identifies statements likely to be mistakes. Unlike a linter, which will often focus on style issues, the go vet command finds code that compiles but that probably won’t do what the developer intended.
-The `go fmt` command formats Go source code files for consistency. There are no configuration options to change the formatting applied by the go fmt command, which transforms code into the style specified by the Go development team.
+* `go fmt`: remove semicolons and adjust other formatting issues.
+* `go build`: compiles Go source code and produces an executable. To remove the output from the 
+compilation process, run `go clean`.
+* `go mod init`: project creation, it simplifies the build process. Instead of specifying a particular
+code file, the project can be built and executed using a period, indicating the project in the 
+current directory.
+* `go vet` command identifies statements likely to be mistakes. Unlike a linter, which will often focus
+ on style issues, the go vet command finds code that compiles but that probably won’t do what the developer intended.
+* `go fmt` command formats Go source code files for consistency. There are no configuration options to change 
+the formatting applied by the go fmt command, which transforms code into the style specified by the Go development team.
 
 ## Debugger
 
-The standard debugger for Go applications is called Delve. By default, the dlv command will be installed in the `~/go/bin` folder (although this can be overridden by setting the GOPATH environment variable).
+The standard debugger for Go applications is called [Delve](https://github.com/go-delve/delve/tree/master/Documentation). By default, the dlv command will be installed in the 
+`~/go/bin` folder (although this can be overridden by setting the GOPATH environment variable).
 
 **Put ~/go/bin/ in your global path**
 
@@ -19,7 +26,8 @@ Procedure:
 
 * `dlv debug <SCRIPT_NAME>` (eg: `main.go`)
 * `break <BREAKPOINT_NAME> <PACKAGE.FUNCTION:LINE>` (eg `break bp1 main.main:3`)
-* create a condition for the breakpoint so that execution will be halted only when a specified expression evaluates to true: `condition bp1 i == 2`
+* create a condition for the breakpoint so that execution will be halted only when a specified expression evaluates
+to true: `condition bp1 i == 2`
 * `continue` starts/resume the execution
 * `next`: moves to the next line
 * `step`: steps into the current statement
