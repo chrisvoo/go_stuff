@@ -1,4 +1,5 @@
-# Each possible operation is called a target.
+# Each possible operation is called a target. You can invoke a target by 
+# running make <target> in the terminal.
 # See https://makefiletutorial.com/
 
 # Defines which target is run when no target is specified.
@@ -6,7 +7,7 @@
 
 # The .PHONY target is a special target that tells make that the listed 
 # targets are not files.
-.PHONY:fmt vet build
+.PHONY:fmt vet build clean
 fmt:
 	go fmt ./...
 
@@ -16,3 +17,6 @@ vet: fmt
 
 build: vet
 	go build
+
+clean:
+	go clean
