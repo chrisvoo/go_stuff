@@ -1,6 +1,24 @@
 # Learning Go, 2nd Edition
 
-## Types and variables
+- [Learning Go, 2nd Edition](#learning-go-2nd-edition)
+  - [Built-in types and variables](#built-in-types-and-variables)
+    - [String literals](#string-literals)
+    - [Integers](#integers)
+    - [Floating types](#floating-types)
+    - [Conversions](#conversions)
+    - [Variable declarations](#variable-declarations)
+    - [Other considerations](#other-considerations)
+  - [Composite types](#composite-types)
+    - [Arrays](#arrays)
+    - [Slices](#slices)
+      - [Slicing Slices](#slicing-slices)
+    - [Strings and Runes and Bytes](#strings-and-runes-and-bytes)
+    - [Maps](#maps)
+    - [Structs](#structs)
+  - [Blocks, Shadows, and Control Structures](#blocks-shadows-and-control-structures)
+
+
+## Built-in types and variables
 
 **Predeclared types** are the built-in types in the language. A Go **literal** is an explicitly specified number, character, or string.
 
@@ -81,3 +99,182 @@ In general:
 * every declared local variable must be read. It is a compile-time error to declare a local variable and to not read its value.
 * Go requires identifier names to start with a letter or underscore, and the name can contain numbers, underscores, and letters
 * The smaller the scope for a variable, the shorter the name that’s used for it.
+
+## Composite types
+
+### Arrays
+
+* all elements in the array must be of the type that’s specified.
+* you cannot read or write past the end of an array or use a negative index.
+* Go considers the size of the array to be part of the type of the array.
+* the size of an array must be a number, can't be a variable
+* you can’t use a type conversion to directly convert arrays of different sizes to identical types
+
+```go
+var x [3]int // zero values
+var x = [3]int{10, 20, 30} // or var x = [...]int{10, 20, 30}
+var x = [12]int{1, 5: 4, 6, 10: 100, 15} // sparse array, indices with nonzero values
+```
+
+### Slices
+
+Data structure for holding a sequence of values where its length is not part of its type. It's zero value is `nil`.
+
+```go
+var x []int // nil slice
+var x = []int{} // zero length and zero capacity
+var x = []int{10, 20, 30}
+var x = []int{1, 5: 4, 6, 10: 100, 15}
+```
+
+Slices are not comparable, the only thing you can compare a slice with using `==` is `nil`. There are functions to compare slices in the `slices` package (Equal, EqualFunc, etc).
+The **length** of a slice is the number of consecutive memory locations that have been assigned a value (built-in `len` function). Every slice also has a **capacity**, which is the number of consecutive memory locations reserved and can be larger than the length (built-in `cap` function). If you try to add additional values when the length equals the capacity, the append function uses the Go runtime to allocate a new backing array for the slice with a larger capacity. The values in the original backing array are copied to the new one, the new values are added to the end of the new backing array, and the slice is updated to refer to the new backing array. Finally, the updated slice is returned.
+`make` allows you to specify the type, length, and, optionally, the capacity
+
+```go
+x := make([]int, 5) // initial length
+x := make([]int, 5, 10) // initial length and capacity
+```
+
+* minimize the number of times the slice needs to grow
+* If it’s possible that the slice won’t need to grow at all, use a var declaration with no assigned value to create a nil slice
+* If you have some starting values, or if a slice’s values aren’t going to change, then a slice literal is a good choice
+* If you have a good idea of how large your slice needs to be, but don’t know what those values will be when you are writing the program, use make:
+  * If you are using a slice as a **buffer**, then specify a nonzero length.
+  * If you are sure you know the exact size you want, you can specify the length and index into the slice to set the values
+  * otherwise zero length and a specified capacity
+
+#### Slicing Slices
+
+When you take a slice from a slice, you are not making a copy of the data. Instead, you now have two variables that are sharing memory. This means that changes to an element in a slice affect all slices that share that element.
+
+```go
+	base := []string{"a", "b", "c", "d"}
+	copybase := base[:2]
+	another := base[1:]
+	yetanother := base[1:3]
+	last := base[:]
+	fmt.Println("base:", base) 				// prints [a, b, c, d]
+	fmt.Println("copybase:", copybase)		// prints [a, b]
+	fmt.Println("another:", another)		// prints [b, c, d]
+	fmt.Println("yetanother:", yetanother)	// prints [b, c]
+	fmt.Println("last:", last)				// prints [a, b, c, d]
+```
+
+Whenever you take a slice from another slice, the subslice’s capacity is set to the
+capacity of the original slice, minus the starting offset of the subslice within the
+original slice. To avoid complicated slice situations, **you should either never use append with a subslice or make sure that append doesn’t cause an overwrite by using a full slice expression**.
+If you need to create a slice that’s independent of the original, use the built-in `copy` function. The capacity of x and y doesn’t matter; it’s the length that’s important.
+
+```go
+x := []int{1, 2, 3, 4}
+y := make([]int, 4)
+num := copy(y, x)
+fmt.Println(y, num)
+```
+
+You can covert arrays (or a subset of array) to slices. Be aware that taking a slice from an array has the same memory-sharing properties as taking a slice from a slice.
+
+```go
+xArray := [4]int{5, 6, 7, 8}
+xSlice := xArray[:]
+```
+
+and viceversa:
+
+```go
+xSlice := []int{1, 2, 3, 4}
+xArray := [4]int(xSlice)
+smallArray := [2]int(xSlice)
+xSlice[0] = 10
+fmt.Println(xSlice) // [10 2 3 4]
+fmt.Println(xArray) // [1 2 3 4]
+fmt.Println(smallArray) // [1, 2]
+```
+
+### Strings and Runes and Bytes
+
+Go uses a sequence of bytes to represent a string
+
+```go
+var s string = "Hello there"
+var b byte = s[6]
+
+// slice
+var s string = "Hello there"
+var s2 string = s[4:7] // "o t" careful, with non-english languages you don't get this
+```
+
+Conversions:
+
+```go
+var a rune    = 'x'
+var s string  = string(a)
+var b byte    = 'y'
+var s2 string = string(b)
+```
+
+### Maps
+
+The map type is written as `map[keyType]valueType`. The zero value for a map is nil with lenght 0. Attempting to write to a nil map variable causes a panic.
+
+```go
+totalWins := map[string]int{} // empty map literal is writable
+
+teams := map[string][]string {
+    "Orcas": []string{"Fred", "Ralph", "Bijou"},
+    "Lions": []string{"Sarah", "Peter", "Billie"},
+    "Kittens": []string{"Waldo", "Raul", "Ze"},
+}
+
+ages := make(map[int][]string, 10)
+```
+
+* Maps automatically grow as you add key-value pairs to them.
+* If you know how many key-value pairs you plan to insert into a map, you can use make to create a map with a specific initial size.
+* Passing a map to the len function tells you the number of key-value pairs in a map.
+* The zero value for a map is nil.
+* Maps are not comparable. You can check if they are equal to nil, but you cannot check if two maps have identical keys and values using == or differ using !=.
+* The key for a map can be any comparable type. This means you cannot use a slice or a map as the key for a map.
+
+### Structs
+
+```go
+type person struct {
+    name string
+    age  int
+    pet  string
+}
+
+var fred person
+bob := person{}
+julia := person{
+    "Julia",
+    40,
+    "cat",
+}
+beth := person{
+    age:  30,
+    name: "Beth",
+}
+bob.name = "Bob"
+fmt.Println(bob.name)
+
+// anonymous struct
+pet := struct {
+    name string
+    kind string
+}{
+    name: "Fido",
+    kind: "dog",
+}
+```
+
+* A struct type that’s defined within a function can be used only within that function.
+* A zero value struct has every field set to the field’s zero value.
+* Structs that are entirely composed of comparable types are comparable; those with slice or map fields are not
+* if two struct variables are being compared and at least one has a type that’s an anonymous struct, you can compare them without a type conversion if the fields of both structs have the same names, order, and types.
+
+You might wonder when it’s useful to have a data type that’s associated only with a single instance. Anonymous structs are handy in two common situations. The first is when you translate external data into a struct or a struct into external data (like JSON or Protocol Buffers). This is called **unmarshaling** and **marshaling** data, respectively. Writing tests is another place where anonymous structs pop up.
+
+## Blocks, Shadows, and Control Structures
