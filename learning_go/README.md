@@ -16,6 +16,12 @@
     - [Maps](#maps)
     - [Structs](#structs)
   - [Blocks, Shadows, and Control Structures](#blocks-shadows-and-control-structures)
+    - [Blocks and shadows](#blocks-and-shadows)
+    - [Control structures](#control-structures)
+      - [if/else](#ifelse)
+      - [for](#for)
+      - [switch](#switch)
+  - [Functions](#functions)
 
 
 ## Built-in types and variables
@@ -278,3 +284,126 @@ pet := struct {
 You might wonder when it’s useful to have a data type that’s associated only with a single instance. Anonymous structs are handy in two common situations. The first is when you translate external data into a struct or a struct into external data (like JSON or Protocol Buffers). This is called **unmarshaling** and **marshaling** data, respectively. Writing tests is another place where anonymous structs pop up.
 
 ## Blocks, Shadows, and Control Structures
+
+### Blocks and shadows
+
+Each place where a declaration occurs is called a **block**. Variables, constants, types, and functions declared outside of any functions are placed in the **package block**. Import statements are in the **file block**. built-in types, constants and function (like `make`) are in the **universe block**.
+When you have a declaration with the same name as an identifier in a containing block, you **shadow** the identifier created in the outer block.
+
+```go
+/* 10
+   5
+   10 */
+func main() {
+    x := 10
+    if x > 5 {
+        fmt.Println(x)
+        x := 5 // shadowing x
+        fmt.Println(x)
+    }
+    fmt.Println(x)
+}
+```
+
+A **shadowing variable** is a variable that has the same name as a variable in a containing block. For as long as the shadowing variable exists, you cannot access a shadowed variable.
+Same thing can happen to packages if you declare a variable named like a package, and also to universe block's elements.
+
+### Control structures
+
+#### if/else
+
+```go
+// It lets you create variables available only where needed.
+if n := rand.Intn(10); n == 0 {
+    fmt.Println("That's too low")
+} else if n > 5 {
+    fmt.Println("That's too big:", n)
+} else {
+    fmt.Println("That's a good number:", n)
+}
+// n here is undefined
+```
+
+#### for
+
+`for` is the only looping keyword in the language and can be used in four format. Favor a for-range loop when iterating over all the contents of an instance of one of the built-in compound types. It avoids a great deal of boilerplate code that’s required when you use an array, slice, or map with one of the other for loop styles.
+
+```go
+// Complete C-style
+for i := 0; i < 10; i++ {
+    fmt.Println(i)
+}
+
+// Complete C-style wiht initialization already done outside
+i := 0
+for ; i < 10; i++ {
+    fmt.Println(i)
+}
+
+// Condition-Only for Statement: it's like a while
+i := 1
+for i < 100 {
+  fmt.Println(i)
+  i = i * 2
+}
+
+// infinite and break/continue
+for {
+    // things to do in the loop
+    if !CONDITION {
+        break
+    }
+}
+
+for i := 1; i <= 100; i++ {
+    if i%3 == 0 && i%5 == 0 {
+        fmt.Println("FizzBuzz")
+        continue
+    }
+    if i%3 == 0 {
+        fmt.Println("Fizz")
+        continue
+    }
+    if i%5 == 0 {
+        fmt.Println("Buzz")
+        continue
+    }
+    fmt.Println(i)
+}
+
+// for-range Statement
+// only to iterate over the built-in compound types and
+// user-defined types that are based on them
+evenVals := []int{2, 4, 6, 8, 10, 12}
+// If you don’t need to access the key, use an underscore (_)
+for _, v := range evenVals {
+    fmt.Println(v)
+}
+
+// or just the keys
+uniqueNames := map[string]bool{"Fred": true, "Raul": true, "Wilma": true}
+for k := range uniqueNames {
+    fmt.Println(k)
+}
+```
+
+#### switch
+
+break statements aren't needed in Go for case statements, however you can use them if you want to exit prematurely, even if may signals you're doing something too complicated.
+
+```go
+for _, word := range words {
+    switch size := len(word); size {
+    case 1, 2, 3, 4:
+        fmt.Println(word, "is a short word!")
+    case 5:
+        wordLen := len(word)
+        fmt.Println(word, "is exactly the right length:", wordLen)
+    case 6, 7, 8, 9: // nothing happens!
+    default:
+        fmt.Println(word, "is a long word!")
+    }
+}
+```
+
+## Functions
