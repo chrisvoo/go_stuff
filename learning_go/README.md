@@ -22,6 +22,17 @@
       - [for](#for)
       - [switch](#switch)
   - [Functions](#functions)
+    - [Emulating optional parameters](#emulating-optional-parameters)
+    - [Variadic parameters](#variadic-parameters)
+    - [Multiple return values](#multiple-return-values)
+    - [Named returned values](#named-returned-values)
+    - [Functions Are Values](#functions-are-values)
+    - [Anonymous Functions](#anonymous-functions)
+    - [Closures](#closures)
+      - [Functions as Parameters and returned values](#functions-as-parameters-and-returned-values)
+    - [defer](#defer)
+    - [Call-by-value](#call-by-value)
+  - [Pointers](#pointers)
 
 
 ## Built-in types and variables
@@ -407,3 +418,258 @@ for _, word := range words {
 ```
 
 ## Functions
+
+Go doesn’t have: named and optional input parameters. If you want to emulate named and optional parameters, define a struct that has fields that match the desired parameters, and pass the struct to your function
+
+### Emulating optional parameters
+
+```go
+type MyFuncOpts struct {
+    FirstName string
+    LastName  string
+    Age       int
+}
+
+func MyFunc(opts MyFuncOpts) error {
+    // do something here
+}
+
+func main() {
+    MyFunc(MyFuncOpts{
+        LastName: "Patel",
+        Age:      50,
+    })
+    MyFunc(MyFuncOpts{
+        FirstName: "Joe",
+        LastName:  "Smith",
+    })
+}
+```
+
+### Variadic parameters
+
+Go supports variadic parameters. The variadic parameter must be the last (or only) parameter in the input parameter list.
+
+```go
+func addTo(base int, vals ...int) []int {
+    out := make([]int, 0, len(vals))
+    for _, v := range vals {
+        out = append(out, base+v)
+    }
+    return out
+}
+```
+
+### Multiple return values
+
+Go allows for multiple return values. When a Go function returns multiple values, the types of the return values are listed in parentheses, separated by commas. If the function completes successfully, you return nil for the error’s value.  By convention, the error is always the last (or only) value returned from a function.
+
+```go
+func divAndRemainder(num, denom int) (int, int, error) {
+    if denom == 0 {
+        return 0, 0, errors.New("cannot divide by zero")
+    }
+    return num / denom, num % denom, nil
+}
+```
+
+### Named returned values
+
+When you supply names to your return values, what you are doing is predeclaring variables that you use within the function to hold the return values. You must surround named return values with parentheses, even if there is only a single return value.
+
+```go
+func divAndRemainder(num, denom int) (result int, remainder int, err error) {
+    if denom == 0 {
+        err = errors.New("cannot divide by zero")
+        return result, remainder, err
+    }
+    result, remainder = num/denom, num%denom
+    // we could have just written return (blank return) to return
+    // the last values assigned to the named return values, avoid it
+    return result, remainder, err
+}
+```
+
+### Functions Are Values
+
+Since functions are values, you can declare a function variable. Here myFuncVariable can be assigned any function that has a single parameter of type string and returns a single value of type int.
+
+```go
+func f1(a string) int {
+    return len(a)
+}
+
+func f2(a string) int {
+    total := 0
+    for _, v := range a {
+        total += int(v)
+    }
+    return total
+}
+
+func main() {
+    var myFuncVariable func(string) int
+    myFuncVariable = f1
+    result := myFuncVariable("Hello")
+    fmt.Println(result)
+
+    myFuncVariable = f2
+    result = myFuncVariable("Hello")
+    fmt.Println(result)
+}
+```
+
+### Anonymous Functions
+
+Declaring anonymous functions without assigning them to variables is useful in two situations: `defer` statements and launching goroutines.
+
+```go
+func main() {
+    f := func(j int) {
+        fmt.Println("printing", j, "from inside of an anonymous function")
+    }
+    for i := 0; i < 5; i++ {
+        f(i)
+    }
+}
+
+func main() {
+    for i := 0; i < 5; i++ {
+        func(j int) {
+            fmt.Println("printing", j, "from inside of an anonymous function")
+        }(i)
+    }
+}
+```
+
+### Closures
+
+Functions declared inside functions are able to access and modify variables declared in the outer function.
+One thing that closures allow you to do is to **limit a function’s scope**. If a function is going to be called from only one other function, but it’s called multiple times, you can use an inner function to “hide” the called function. It can also be used for **DRY principle** in case a piece of code is executed multiple times.
+
+#### Functions as Parameters and returned values
+
+```go
+type Person struct {
+    FirstName string
+    LastName  string
+    Age       int
+}
+
+people := []Person{
+    {"Pat", "Patterson", 37},
+    {"Tracy", "Bobdaughter", 23},
+    {"Fred", "Fredson", 18},
+}
+
+sort.Slice(people, func(i, j int) bool {
+    return people[i].Age < people[j].Age
+})
+// [{Fred Fredson 18} {Tracy Bobdaughter 23} {Pat Patterson 37}]
+fmt.Println(people)
+```
+
+```go
+func makeMult(base int) func(int) int {
+    return func(factor int) int {
+        return base * factor
+    }
+}
+
+twoBase := makeMult(2)
+threeBase := makeMult(3)
+for i := 0; i < 3; i++ {
+    fmt.Println(twoBase(i), threeBase(i))
+}
+```
+
+### defer
+
+In Go, the cleanup code for releases resources is attached to the function with the `defer` keyword. Below `defer`  delays the invocation until the surrounding function exits (also after return).
+
+```go
+f, err := os.Open(os.Args[1])
+defer f.Close()
+data := make([]byte, 2048)
+for {
+    count, err := f.Read(data)
+    //...
+}
+```
+
+You can use a function, method, or closure with defer. You can defer multiple functions in a Go function. They run in LIFO order.
+
+```go
+/*
+exiting: 30
+second: 20
+first: 10
+*/
+func deferExample() int {
+    a := 10
+    defer func(val int) {
+        fmt.Println("first:", val)
+    }(a)
+    a = 20
+    defer func(val int) {
+        fmt.Println("second:", val)
+    }(a)
+    a = 30
+    fmt.Println("exiting:", a)
+    return a
+}
+```
+
+There’s a way for a deferred function to examine or modify the return values of its surrounding function. Here is a pattern that uses defer to add contextual information to an error returned from a function:
+
+```go
+func DoSomeInserts(ctx context.Context, db *sql.DB, value1, value2 string)
+                  (err error) {
+    tx, err := db.BeginTx(ctx, nil)
+    if err != nil {
+        return err
+    }
+    defer func() {
+        if err == nil {
+            err = tx.Commit()
+        }
+        if err != nil {
+            tx.Rollback()
+        }
+    }()
+    _, err = tx.ExecContext(ctx, "INSERT INTO FOO (val) values $1", value1)
+    if err != nil {
+        return err
+    }
+    // use tx to do more database inserts here
+    return nil
+}
+```
+
+A common pattern in Go is for a function that allocates a resource to also return a closure that cleans up the resource:
+
+```go
+func getFile(name string) (*os.File, func(), error) {
+    file, err := os.Open(name)
+    if err != nil {
+        return nil, nil, err
+    }
+    return file, func() {
+        file.Close()
+    }, nil
+}
+
+f, closer, err := getFile(os.Args[1])
+if err != nil {
+    log.Fatal(err)
+}
+defer closer()
+```
+
+### Call-by-value
+
+It means that when you supply a variable for a parameter to a function, Go always makes a copy of the value of the variable. This is true for primitive types and structs, but any changes made to a map parameter are reflected in the variable passed into the function. You can modify any element in the slice, but you can’t lengthen the slice.
+Since variables are passed by value, you can be sure that calling a function doesn’t modify the variable whose value was passed in (unless the variable is a slice or map)
+
+## Pointers
+
