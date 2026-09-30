@@ -33,6 +33,10 @@
     - [defer](#defer)
     - [Call-by-value](#call-by-value)
   - [Pointers](#pointers)
+    - [Pointers Indicate Mutable Parameters](#pointers-indicate-mutable-parameters)
+    - [Reducing the Garbage Collector’s Workload](#reducing-the-garbage-collectors-workload)
+      - [The heap](#the-heap)
+      - [Tuning the Garbage Collector](#tuning-the-garbage-collector)
 
 
 ## Built-in types and variables
@@ -673,3 +677,128 @@ Since variables are passed by value, you can be sure that calling a function doe
 
 ## Pointers
 
+A pointer is a variable that holds the location in memory where a value is stored. Every variable is stored in one or more contiguous memory locations, called **addresses**. Different types of variables can take up different amounts of memory.
+
+![pointer](./assets/pointer.png)
+
+The zero value for a pointer is nil. Since Go has a garbage collector, most memory management pain is removed.
+The `&` is the address operator. It precedes a value type and returns the address where the value is stored. The * is the indirection operator. It precedes a variable of pointer type and returns the pointed-to value. This is called **dereferencing**.
+
+```go
+x := 10
+pointerToX := &x
+fmt.Println(pointerToX)  // prints a memory address
+fmt.Println(*pointerToX) // prints 10
+z := 5 + *pointerToX
+fmt.Println(z)           // prints 15
+```
+
+Before dereferencing a pointer, you must make sure that the pointer is non-nil. A pointer type is a type that represents a pointer. It is written with a `*` before a type name and can be based on any type.
+The built-in function `new` (rarely used) creates a pointer variable. It returns a pointer to a zero-value instance of the provided type:
+
+```go
+var x = new(int)
+fmt.Println(x == nil) // prints false
+fmt.Println(*x)       // prints 0
+```
+
+You can’t use an `&` before a primitive literal (numbers, booleans, and strings) or a constant because they don’t have memory addresses; they exist only at compile time. When you need a pointer to a primitive type, declare a variable and point to it
+
+```go
+x := &Foo{}
+var y string
+z := &y
+```
+
+If you have a struct with a field of a pointer to a primitive type, you can’t assign a literal directly to the field.
+
+```go
+type person struct {
+    FirstName  string
+    MiddleName *string
+    LastName   string
+}
+
+/*
+p := person{
+  FirstName:  "Pat",
+  MiddleName: "Perry", // This line won't compile
+  LastName:   "Peterson",
+} */
+```
+
+There are two ways around this problem. The first is to do what was shown previously, which is to introduce a variable to hold the constant value. The second way is to write a generic helper function that takes in a parameter of any type and returns a pointer to that type:
+
+```go
+func makePointer[T any](t T) *T {
+    return &t
+}
+
+p := person{
+  FirstName:  "Pat",
+  MiddleName: makePointer("Perry"), // This works
+  LastName:   "Peterson",
+}
+```
+
+### Pointers Indicate Mutable Parameters
+
+The lack of immutable declarations in Go might seem problematic, but the ability to choose between value and pointer parameter types addresses the issue. Rather than declare that some variables and parameters are immutable, Go developers use pointers to indicate that a parameter is mutable.
+Since Go is a call-by-value language, the values passed to functions are copies. For nonpointer types like primitives, structs, and arrays, this means that the called function cannot modify the original. Since the called function has a copy of the original data, the original data’s immutability is guaranteed. However, if a pointer is passed to a function, the function gets a copy of the pointer. This still points to the original data, which means that the original data can be modified by the called function.
+
+* when you pass a nil pointer to a function, you cannot make the value non-nil. You can reassign the value only if there was a value already assigned to the pointer.
+* if you want the value assigned to a pointer parameter to still be there when you exit the function, you must dereference the pointer and set the value
+
+```go
+func failedUpdate(px *int) {
+    x2 := 20
+    px = &x2
+}
+
+func update(px *int) {
+    *px = 20
+}
+
+func main() {
+    x := 10
+    failedUpdate(&x)
+    fmt.Println(x) // prints 10
+    update(&x)
+    fmt.Println(x) // prints 20
+}
+```
+
+> [!NOTE]
+> You should be careful when using pointers in Go.
+> As discussed earlier, they make it harder to understand data flow and can create extra work for the garbage collector. The only time you should use pointer parameters to modify a variable is when the function expects an interface.
+
+When converting data back and forth from JSON you often need a way to differentiate between the zero value and not having a value assigned at all. Use a pointer value for fields in the struct that are nullable.
+When not working with JSON (or other external protocols), resist the temptation to use a pointer field to indicate no value.
+
+### Reducing the Garbage Collector’s Workload
+
+A **stack** is a consecutive block of memory. Every function call in a thread of execution shares the same stack. Allocating memory on the stack is fast and simple.
+A **stack pointer** tracks the last location where memory was allocated. Allocating additional memory is done by changing the value of the stack pointer.
+When a function is invoked, a new stack frame is created for the function’s data. Local variables are stored on the stack, along with parameters passed into a function. Each new variable moves the stack pointer by the size of the value. When a function exits, its return values are copied back to the calling function via the stack, and the stack pointer is moved back to the beginning of the stack frame for the exited function, deallocating all the stack memory that was used by that function’s local variables and parameters.
+To store something on the stack, you have to know exactly how big it is at compile time. When you look at the value types in Go (primitive values, arrays, and structs), they all have one thing in common: you know exactly how much memory they take at compile time. This is why the size is considered part of the type for an array. Because their sizes are known, they can be allocated on the stack instead of the heap. The size of a pointer type is also known, and it is also stored on the stack.
+The rules are more complicated when it comes to the data that the pointer points to. In order for Go to allocate the data the pointer points to on the stack, several conditions must be true:
+* The data must be a local variable whose data size is known at compile time
+* The pointer cannot be returned from the function
+* If the pointer is passed into a function, the compiler must be able to ensure that these conditions still hold.
+* If the size isn’t known, you can’t make space for it by moving the stack pointer.
+* If the pointer variable is returned, the memory that the pointer points to will no longer be valid when the function exits.
+
+#### The heap
+
+When the compiler determines that the data can’t be stored on the stack, we say that the data the pointer points to escapes the stack, and the compiler stores the data on the **heap**. The heap is the memory that’s managed by the garbage collector. Any data that’s stored on the heap is valid as long as it can be tracked back to a pointer type variable on a stack. Once there are no more variables on the stack pointing to that data, either directly or via a chain of pointers, the data becomes garbage, and it’s the job of the garbage collector to clear it out.
+Two performance problems related to storing data to the heap:
+* the garbage collector takes time to do its work
+* the fastest way to read from memory is to read it sequentially. A slice of structs in Go has all the data laid out sequentially in memory. This makes it fast to load and fast to process. A slice of pointers to structs (or structs whose fields are pointers) has its data scattered across RAM, making it far slower to read and process.
+
+Now you can see why Go encourages you to use pointers sparingly. You reduce the garbage collector’s workload by making sure that as much as possible is stored on the stack.  Slices of structs or primitive types have their data lined up sequentially in memory for rapid access. And when the garbage collector does do work, it is optimized to return quickly rather than gather the most garbage. The key to making this approach work is to simply create less garbage in the first place. While focusing on optimizing memory allocations can feel like premature optimization, the idiomatic approach in Go is also the most efficient.
+
+#### Tuning the Garbage Collector
+
+The Go runtime provides users a couple of settings to control the heap’s size;
+* `GOGC` env variable (default 100): the garbage collector looks at the heap size at the end of a garbage-collection cycle and uses the formula `CURRENT_HEAP_SIZE + CURRENT_HEAP_SIZE*GOGC / 100` to calculate the heap size that needs to be reached to trigger the next garbage-collection cycle. As a rough estimate, doubling the value of GOGC will halve the amount of CPU time spent on GC.
+* `GOMEMLIMIT` (default `math.MaxInt64`): soft limit on the total amount of memory your Go program is allowed to use. It's specified in bytes byt you can use also values like `3GiB` to set the memory limit to 3 gibibytes.
