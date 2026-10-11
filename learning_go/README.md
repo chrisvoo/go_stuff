@@ -37,6 +37,18 @@
     - [Reducing the Garbage Collector’s Workload](#reducing-the-garbage-collectors-workload)
       - [The heap](#the-heap)
       - [Tuning the Garbage Collector](#tuning-the-garbage-collector)
+  - [Types, Methods, and Interfaces](#types-methods-and-interfaces)
+    - [Pointer Receivers and Value Receivers](#pointer-receivers-and-value-receivers)
+    - [Enumerations](#enumerations)
+    - [Ebedded fields](#ebedded-fields)
+    - [Interfaces](#interfaces)
+      - [Accept Interfaces, Return Structs](#accept-interfaces-return-structs)
+      - [Embeddings and Interfaces](#embeddings-and-interfaces)
+      - [Interfaces and nil](#interfaces-and-nil)
+      - [Comparisons](#comparisons)
+      - [Empty interface](#empty-interface)
+      - [Type Assertions and Type Switches](#type-assertions-and-type-switches)
+      - [Dependency Injection](#dependency-injection)
 
 
 ## Built-in types and variables
@@ -802,3 +814,413 @@ Now you can see why Go encourages you to use pointers sparingly. You reduce the 
 The Go runtime provides users a couple of settings to control the heap’s size;
 * `GOGC` env variable (default 100): the garbage collector looks at the heap size at the end of a garbage-collection cycle and uses the formula `CURRENT_HEAP_SIZE + CURRENT_HEAP_SIZE*GOGC / 100` to calculate the heap size that needs to be reached to trigger the next garbage-collection cycle. As a rough estimate, doubling the value of GOGC will halve the amount of CPU time spent on GC.
 * `GOMEMLIMIT` (default `math.MaxInt64`): soft limit on the total amount of memory your Go program is allowed to use. It's specified in bytes byt you can use also values like `3GiB` to set the memory limit to 3 gibibytes.
+
+## Types, Methods, and Interfaces
+
+Go allows you to declare a type at any block level, from the package block down. However, you can access the type only from within its scope. The only exceptions are types exported from other packages.
+The methods for a type are defined at the package block level:
+
+```go
+type Person struct {
+    FirstName string
+    LastName  string
+    Age       int
+}
+
+func (p Person) String() string {
+    return fmt.Sprintf("%s %s, age %d", p.FirstName, p.LastName, p.Age)
+}
+```
+
+Method declarations look like function declarations, with one addition: the **receiver** specification. By convention, the receiver name is a short abbreviation of the type’s name, usually its first letter. It is nonidiomatic to use this or self.
+There is one key difference between declaring methods and functions: **methods can be defined only at the package block level, while functions can be defined inside any block**.
+It is best to keep your type definition and its associated methods together so that it’s easy to follow the implementation.
+
+### Pointer Receivers and Value Receivers
+
+The following rules help you determine when to use each kind of receiver:
+
+* If your method modifies the receiver, you must use a pointer receiver.
+* If your method needs to handle nil instances, then it must use a pointer receiver.
+* If your method doesn’t modify the receiver, you can use a value receiver.
+
+When a type has any pointer receiver methods, a common practice is to be consistent and use pointer receivers for all methods, even the ones that don’t modify the receiver. When you use a pointer receiver with a local variable that’s a value type, Go automatically takes the address of the local variable when calling the method. In this case, `c.Increment()` is converted to `(&c).Increment()`:
+
+```go
+type Counter struct {
+    total       int
+    lastUpdated time.Time
+}
+
+func (c *Counter) Increment() {
+    c.total++
+    c.lastUpdated = time.Now()
+}
+
+var c Counter
+fmt.Println(c.String())
+c.Increment()
+fmt.Println(c.String())
+```
+
+You can also create a function from the type itself. This is called a **method expression**:
+
+```go
+type Adder struct {
+    start int
+}
+
+func (a Adder) AddTo(val int) int {
+    return a.start + val
+}
+
+myAdder := Adder{start: 10}
+fmt.Println(myAdder.AddTo(5)) // prints 15
+
+// In a method expression, the 1st parameter is the receiver for the method
+f2 := Adder.AddTo
+fmt.Println(f2(myAdder, 15))  // prints 25
+```
+
+> [!NOTE]
+> Anytime your logic depends on values that are configured at startup or changed
+> while your program is running, those values should be stored in a struct, and
+> that logic should be implemented as a method. If your logic depends only on the
+> input parameters, it should be a function
+
+### Enumerations
+
+Go doesn’t have an enumeration type. Instead, it has iota, which lets you assign an increasing value to a set of constants. When using iota, the best practice is to first define a type based on int that will represent all the valid values:
+
+```go
+type MailCategory int
+```
+
+Next, use a const block to define a set of values for your type:
+
+```go
+const (
+    Uncategorized MailCategory = iota
+    Personal
+    Spam
+    Social
+    Advertisements
+)
+```
+
+The first constant in the const block has the type specified, and its value is set to iota. Every subsequent line has neither the type nor a value assigned to it. When the Go compiler sees this, it repeats the type and the assignment to all the subsequent constants in the block, which is iota. The value of iota increments for each constant defined in the const block, starting with 0. This means that 0 is assigned to the first constant (Uncategorized), 1 to the second constant (Personal), and so on.
+
+### Ebedded fields
+
+Any fields or methods declared on an embedded field are promoted to the containing struct and can be invoked directly on it. You can embed any type within a struct, not just another struct. This promotes the methods on the embedded type to the containing struct.
+
+```go
+type Employee struct {
+    Name         string
+    ID           string
+}
+
+type Manager struct {
+    Employee // Embedded field
+    Reports []Employee
+}
+
+m := Manager{
+    Name:    "Bob Bobson",
+    ID:      "12345",
+    Reports: []Employee{},
+}
+
+/* Equivalent to
+m := Manager{
+    Employee: Employee{
+        Name: "Bob Bobson",
+        ID:   "12345",
+    },
+    Reports: []Employee{},
+}
+*/
+```
+
+Watch out: this is not inheritance. The methods on the embedded field have no idea they are embedded. When you embed a struct in Go, all the fields and methods of the inner struct are automatically promoted to the outer struct.
+
+### Interfaces
+
+In an interface declaration, an interface literal appears after the name of the interface type. It lists the methods that must be implemented by a concrete type to meet the interface.
+A concrete type does not declare that it implements an interface. If the method set for a concrete type contains all the methods in the method set for an interface, the concrete type implements the interface (implicit). Therefore, that the concrete type can be assigned to a variable or field declared to be of the type of the interface.
+
+```go
+type LogicProvider struct {}
+
+func (lp LogicProvider) Process(data string) string {
+    // business logic
+}
+
+type Logic interface {
+    Process(data string) string
+}
+
+type Client struct{
+    L Logic
+}
+
+func(c Client) Program() {
+    // get data from somewhere
+    c.L.Process(data)
+}
+
+main() {
+    c := Client{
+        L: LogicProvider{},
+    }
+    c.Program()
+}
+```
+
+It’s perfectly fine for a type that meets an interface to specify additional methods that aren’t part of the interface. One set of client code may not care about those methods, but others do.
+
+#### Accept Interfaces, Return Structs
+
+It makes easier to gradually update a function's return values in new versions of your code. When a concrete type
+is returned by a function, new methods and fields can be added without breaking existing code that calls the
+function, because the new fields and methods are ignored. The same is not true for an interface. Adding a new
+method to an interface means that all existing implementations of that interface must be updated, or your code
+breaks.
+
+Example: The library exports a function returning a concrete struct pointer *Service
+
+```go
+package user
+
+type Service struct{}
+
+func NewService() *Service {
+    return &Service{}
+}
+
+func (s *Service) GetUser(id string) string {
+    return "Alice"
+}
+```
+
+And the consumer code:
+
+```go
+package main
+
+import (
+    "fmt"
+    "myproject/user"
+)
+
+func main() {
+    svc := user.NewService()
+    fmt.Println(svc.GetUser("123"))
+}
+```
+
+If we add `DeleteUser` and `Timeout` to `Service`:
+
+```go
+type Service struct {
+    Timeout time.Duration // New field added
+}
+
+//...
+
+func (s *Service) DeleteUser(id string) bool {
+    return true
+}
+```
+
+The consumer's existing code compiles and runs without any modifications. The consumer simply ignores DeleteUser and Timeout. If we instead return an interface:
+
+```go
+package user
+
+type Service interface {
+    GetUser(id string) string
+}
+
+type defaultService struct{}
+
+func (d *defaultService) GetUser(id string) string {
+    return "Alice"
+}
+
+func NewService() Service {
+    return &defaultService{}
+}
+```
+
+and the consumer is like that:
+
+```go
+package main
+
+import (
+    "fmt"
+    "myproject/user"
+)
+
+// Consumer writes a mock for unit testing
+type MockUserService struct{}
+
+func (m *MockUserService) GetUser(id string) string {
+    return "Mock User"
+}
+
+func Process(s user.Service) {
+    fmt.Println(s.GetUser("123"))
+}
+
+func main() {
+    mock := &MockUserService{}
+    Process(mock)
+}
+```
+
+when we add `DeleteUser` to the interface:
+
+```go
+type Service interface {
+    GetUser(id string) string
+    DeleteUser(id string) bool // Added method to interface
+}
+```
+
+The consumer's code now fails to compile: `cannot use mock (variable of type *MockUserService) as user.Service value in argument to Process: *MockUserService does not implement user.Service (missing method DeleteUser)`
+
+
+#### Embeddings and Interfaces
+
+```go
+type Reader interface {
+        Read(p []byte) (n int, err error)
+}
+
+type Closer interface {
+        Close() error
+}
+
+type ReadCloser interface {
+        Reader
+        Closer
+}
+```
+
+#### Interfaces and nil
+
+In the Go runtime, interfaces are implemented as a struct with two pointer fields, one for the value and one for the type of the value. As long as the type field is non-nil, the interface is non-nil. In order for an interface to be considered nil, both the type and the value must be nil.
+What nil indicates for a variable with an interface type is whether you can invoke methods on it. f you want to check whether the value associated with an interface is nil, you can do so with reflection by using two methods—IsValid and IsNil:
+
+```go
+func hasNoValue(i any) bool {
+    iv := reflect.ValueOf(i)
+    if !iv.IsValid() { // true if not nil
+        return true
+    }
+    switch iv.Kind() {
+    case reflect.Pointer, reflect.Slice, reflect.Map, reflect.Func,
+         reflect.Interface:
+        return iv.IsNil() // true if the value is nil
+    default:
+        return false
+    }
+}
+```
+
+#### Comparisons
+
+Two instances of an interface type are equal only if their types are equal and their values are equal. Takeaways for Interface Comparisons in Go:
+* **Pointer Identity**: Pointer values inside interfaces are equal only if they point to the exact same memory location or are both nil.
+* **Mismatched Types**: Comparing interfaces with different underlying types evaluates safely to false.
+* **Non-Comparable Types**: Slices, maps, and functions cannot be compared with ==. Comparing interface values that wrap these types triggers a panic at runtime.
+
+#### Empty interface
+
+Used to say that a variable could store a value of any type. These situations should be relatively rare. Avoid using it.
+
+```go
+var i interface{}
+i = 20
+i = "hello"
+i = struct {
+    FirstName string
+    LastName string
+} {"Fred", "Fredson"}
+```
+
+To improve readability, Go added any as a type alias for `interface{}`.
+
+```go
+data := map[string]any{}
+contents, err := os.ReadFile("testdata/sample.json")
+if err != nil {
+    return err
+}
+json.Unmarshal(contents, &data)
+```
+
+#### Type Assertions and Type Switches
+
+Go provides two ways to see if a variable of an interface type has a specific concrete type or if the concrete type implements another interface.
+A **type assertion** names the concrete type that implemented the interface, or names another interface that is also implemented by the concrete type whose value is stored in the interface. Type assertions can be applied only to interface types.
+In this example, the type assertion i.(MyInt) tells Go: "*I know i holds a MyInt at runtime. Extract that concrete value for me.*" Once unwrapped into i2, its type is restored to MyInt, allowing you to perform arithmetic like i2 + 1. If i holds a different type (even a plain int), or if i is nil, the program triggers a runtime panic.
+If you have used Java or C#, type assertion is almost identical to casting an Object or interface down to a concrete type
+
+```go
+type MyInt int // 1. Custom type derived from int
+
+func main() {
+    var i any            // 2. 'i' is an empty interface (interface{}), holding no type info at compile time
+    var mine MyInt = 20  // 3. 'mine' is of type MyInt
+    i = mine             // 4. 'mine' is boxed into 'i'; 'i' now holds dynamic type MyInt and dynamic value 20
+
+    i2 := i.(MyInt)      // 5. Type Assertion: unwraps 'i' to retrieve the MyInt value
+
+    fmt.Println(i2 + 1)  // 6. Output: 21
+}
+```
+
+Even if two types share an underlying type, a type assertion must match the type of the value stored in the interface. Considering the code before, the following one panics without the comma ok idiom:
+
+```go
+i2, ok := i.(int)
+if !ok {
+    return fmt.Errorf("unexpected type for %v",i)
+}
+fmt.Println(i2 + 1)
+```
+
+When an interface could be one of multiple possible types, use a **type switch** instead:
+
+```go
+func doThings(i any) {
+    switch j := i.(type) {
+    case nil:
+        // i is nil, type of j is any
+    case int:
+        // j is of type int
+    case MyInt:
+        // j is of type MyInt
+    case io.Reader:
+        // j is of type io.Reader
+    case string:
+        // j is a string
+    case bool, rune:
+        // i is either a bool or rune, so j is of type any
+    default:
+        // no idea what i is, so j is of type any
+    }
+}
+```
+
+One common use of a type assertion is to see if the concrete type behind the interface also implements another interface. This allows you to specify optional interfaces
+
+#### Dependency Injection
+
+Go allows methods on any user-defined type, including user-defined function types. See [injection.go](ch7/injection.go) and how it is called in [main.go](ch7/main.go). Th
+
+
+
