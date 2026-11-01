@@ -49,6 +49,8 @@
       - [Empty interface](#empty-interface)
       - [Type Assertions and Type Switches](#type-assertions-and-type-switches)
       - [Dependency Injection](#dependency-injection)
+  - [Generics](#generics)
+    - [Type Terms](#type-terms)
 
 
 ## Built-in types and variables
@@ -1222,5 +1224,91 @@ One common use of a type assertion is to see if the concrete type behind the int
 
 Go allows methods on any user-defined type, including user-defined function types. See [injection.go](ch7/injection.go) and how it is called in [main.go](ch7/main.go). Th
 
+## Generics
 
+In some situations it’s useful to write functions or structs that leave the specific type of a parameter or field unspecified until it is used.
+
+```go
+type Stack[T comparable] struct {
+    vals []T
+}
+
+func (s *Stack[T]) Push(val T) {
+    s.vals = append(s.vals, val)
+}
+
+func (s *Stack[T]) Pop() (T, bool) {
+    if len(s.vals) == 0 {
+        var zero T
+        return zero, false
+    }
+    top := s.vals[len(s.vals)-1]
+    s.vals = s.vals[:len(s.vals)-1]
+    return top, true
+}
+
+// main.go
+var intStack Stack[int]
+intStack.Push(10)
+intStack.Push(20)
+intStack.Push(30)
+v, ok := intStack.Pop()
+fmt.Println(v, ok)
+```
+
+### Type Terms
+
+A type element is composed of one or more type terms within an interface. The allowed operators are the ones that are valid for all of the listed types. Be aware that interfaces with type elements are valid only as type constraints. It is a compile-time error to use them as the type for a variable, field, return value, or parameter
+
+```go
+type Integer interface {
+    int | int8 | int16 | int32 | int64 |
+        uint | uint8 | uint16 | uint32 | uint64 | uintptr
+}
+
+func divAndRemainder[T Integer](num, denom T) (T, T, error) {
+    if denom == 0 {
+        return 0, 0, errors.New("cannot divide by zero")
+    }
+    return num / denom, num % denom, nil
+}
+
+func main() {
+    var a uint = 18_446_744_073_709_551_615
+    var b uint = 9_223_372_036_854_775_808
+    fmt.Println(divAndRemainder(a, b))
+}
+```
+
+By default, type terms match exactly. If you try to use divAndRemainder with a user-defined type whose underlying type is one of the types listed in Integer, you’ll get an error. If you want a type term to be valid for any type that has the type term as its underlying type, put a ~ before the type term.
+
+```go
+type Integer interface {
+    ~int | ~int8 | ~int16 | ~int32 | ~int64 |
+        ~uint | ~uint8 | ~uint16 | ~uint32 | ~uint64 | ~uintptr
+}
+```
+
+It is legal to have both type elements and method elements in an interface used for a type parameter.
+
+```go
+type PrintableInt interface {
+    ~int
+    String() string
+}
+```
+
+Like operators, the constants need to be valid for all the type terms in the type element. If you use the Integer interface, the following code will not compile, because you cannot assign the value 1,000 to an 8-bit integer.
+
+```go
+// INVALID!
+func PlusOneThousand[T Integer](in T) T {
+    return in + 1_000
+}
+
+// VALID
+func PlusOneHundred[T Integer](in T) T {
+    return in + 100
+}
+```
 
