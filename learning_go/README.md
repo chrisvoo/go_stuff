@@ -51,6 +51,15 @@
       - [Dependency Injection](#dependency-injection)
   - [Generics](#generics)
     - [Type Terms](#type-terms)
+  - [Errors](#errors)
+    - [Sentinel errors](#sentinel-errors)
+    - [Errors Are Values](#errors-are-values)
+    - [Wrapping errors](#wrapping-errors)
+    - [Multiple errors](#multiple-errors)
+    - [Is and As](#is-and-as)
+    - [Wrapping Errors with defer](#wrapping-errors-with-defer)
+    - [panic and recover](#panic-and-recover)
+    - [Getting a Stack Trace from an Error](#getting-a-stack-trace-from-an-error)
 
 
 ## Built-in types and variables
@@ -1312,3 +1321,325 @@ func PlusOneHundred[T Integer](in T) T {
 }
 ```
 
+## Errors
+
+Go handles errors by returning a value of type error as the last return value for a function. When a function executes as expected, nil is returned for the error parameter (the zero value for any interface).
+The calling function then checks the error return value by comparing it to nil, handling the error, or returning an error of its own.
+`error` is a built-in interface that defines a single method: `Error() string`.
+There are two very good reasons that Go uses a returned error instead of thrown exceptions:
+* exceptions add at least one new code path through the code.
+* making errors returned values forces developers to either check and handle error conditions or make it explicit that they are ignoring errors by using an underscore (_) for the returned error value.
+
+If you pass an error to fmt.Println, it calls the Error method automatically
+
+```go
+func doubleEven(i int) (int, error) {
+    if i % 2 != 0 {
+        return 0, errors.New("only even numbers are processed")
+    }
+    return i * 2, nil
+}
+
+func main() {
+    result, err := doubleEven(1)
+    if err != nil {
+        fmt.Println(err) // prints "only even numbers are processed"
+    }
+    fmt.Println(result)
+}
+```
+
+### Sentinel errors
+
+Sentinel errors are usually used to indicate that you cannot start or continue processing.
+By convention, their names start with Err (with the notable exception of io.EOF). They should be treated as read-only; there’s no way for the Go compiler to enforce this, but it is a programming error to change their value.
+Sentinel errors should be rare, so they can be handled by convention instead of language rules.
+
+### Errors Are Values
+
+Since error is an interface, you can define your own errors that include additional information for logging or error handling. Even when you define your own custom error types, always use error as the return type for the error result.
+
+```go
+type Status int
+
+const (
+    InvalidLogin Status = iota + 1
+    NotFound
+)
+
+type StatusErr struct {
+    Status    Status
+    Message   string
+}
+
+func (se StatusErr) Error() string {
+    return se.Message
+}
+
+func LoginAndGetData(uid, pwd, file string) ([]byte, error) {
+    token, err := login(uid, pwd)
+    if err != nil {
+        return nil, StatusErr{
+            Status:    InvalidLogin,
+            Message: fmt.Sprintf("invalid credentials for user %s", uid),
+        }
+    }
+    // ...
+    return data, nil
+}
+```
+
+> [!NOTE]
+> When using custom errors, never define a variable to be of the type of your custom
+> error. Either explicitly return nil when no error occurs or define the variable to be
+> of type error.
+
+### Wrapping errors
+
+When you preserve an error while adding information, it is called wrapping the error. When you have a series of wrapped errors, it is called an error tree. The fmt.Errorf function has a special verb, `%w`.
+The standard library also provides a function for unwrapping errors, the Unwrap function in the errors package. You pass it an error, and it returns the wrapped error if there is one. If there isn’t, it returns nil.
+
+```go
+func fileChecker(name string) error {
+    f, err := os.Open(name)
+    if err != nil {
+        return fmt.Errorf("in fileChecker: %w", err)
+    }
+    f.Close()
+    return nil
+}
+
+func main() {
+    err := fileChecker("not_here.txt")
+    if err != nil {
+        fmt.Println(err)
+        if wrappedErr := errors.Unwrap(err); wrappedErr != nil {
+            fmt.Println(wrappedErr)
+        }
+    }
+}
+```
+
+If you want to wrap an error with your custom error type, your error type needs to implement the method Unwrap.
+
+```go
+type StatusErr struct {
+    Status  Status
+    Message string
+    Err     error
+}
+
+func (se StatusErr) Error() string {
+    return se.Message
+}
+
+func (se StatusErr) Unwrap() error {
+    return se.Err
+}
+
+func LoginAndGetData(uid, pwd, file string) ([]byte, error) {
+    token, err := login(uid,pwd)
+    if err != nil {
+        return nil, StatusErr {
+            Status: InvalidLogin,
+            Message: fmt.Sprintf("invalid credentials for user %s",uid),
+            Err: err,
+        }
+    }
+    // ...
+    return data, nil
+}
+```
+
+### Multiple errors
+
+Since the standard function signature returns error and not []error, you need to merge multiple errors into a single error
+
+```go
+type Person struct {
+    FirstName string
+    LastName  string
+    Age       int
+}
+
+func ValidatePerson(p Person) error {
+    var errs []error
+    if len(p.FirstName) == 0 {
+        errs = append(errs, errors.New("field FirstName cannot be empty"))
+    }
+    if len(p.LastName) == 0 {
+        errs = append(errs, errors.New("field LastName cannot be empty"))
+    }
+    if p.Age < 0 {
+        errs = append(errs, errors.New("field Age cannot be negative"))
+    }
+    if len(errs) > 0 {
+        return errors.Join(errs...)
+    }
+    return nil
+}
+
+// or
+err1 := errors.New("first error")
+err2 := errors.New("second error")
+err3 := errors.New("third error")
+err := fmt.Errorf("first: %w, second: %w, third: %w", err1, err2, err3)
+
+// or
+type MyError struct {
+    Code   int
+    Errors []error
+}
+
+type (m MyError) Error() string {
+    return errors.Join(m.Errors...).Error()
+}
+
+func (m MyError) Unwrap() []error {
+    return m.Errors
+}
+```
+
+### Is and As
+
+If a sentinel error is wrapped, you cannot use == to check for it, nor can you use a type assertion or type switch to match a wrapped custom error. Go solves this problem with two functions in the errors package, Is and As.
+
+```go
+func fileChecker(name string) error {
+    f, err := os.Open(name)
+    if err != nil {
+        return fmt.Errorf("in fileChecker: %w", err)
+    }
+    f.Close()
+    return nil
+}
+
+func main() {
+    err := fileChecker("not_here.txt")
+    if err != nil {
+        if errors.Is(err, os.ErrNotExist) {
+            fmt.Println("That file doesn't exist")
+        }
+    }
+}
+```
+
+By default, `errors.Is` uses == to compare each wrapped error with the specified error. If this does not work for an error type that you define (for example, if your error is a noncomparable type), implement the Is method on your error:
+
+```go
+type MyErr struct {
+    Codes []int
+}
+
+func (me MyErr) Error() string {
+    return fmt.Sprintf("codes: %v", me.Codes)
+}
+
+func (me MyErr) Is(target error) bool {
+    if me2, ok := target.(MyErr); ok {
+        return slices.Equal(me.Codes, me2.Codes)
+    }
+    return false
+}
+```
+
+The errors.As function allows you to check whether a returned error (or any error it wraps) matches a specific type. If the function returns true, an error in the error tree was found that matched, and that matching error is assigned to the second parameter.
+
+```go
+err := AFunctionThatReturnsAnError()
+var myErr MyErr
+if errors.As(err, &myErr) {
+    fmt.Println(myErr.Codes)
+}
+
+// You can pass a pointer to an interface to find an error that meets the interface
+err := AFunctionThatReturnsAnError()
+var coder interface {
+    CodeVals() []int
+}
+if errors.As(err, &coder) {
+    fmt.Println(coder.CodeVals())
+}
+```
+
+Also here you can implement the `As` method for your error, but it is nontrivial and requires reflection.
+
+### Wrapping Errors with defer
+
+Sometimes you find yourself wrapping multiple errors with the same message:
+
+```go
+func DoSomeThings(val1 int, val2 string) (string, error) {
+    val3, err := doThing1(val1)
+    if err != nil {
+        return "", fmt.Errorf("in DoSomeThings: %w", err)
+    }
+    //[..]
+    return result, nil
+}
+```
+
+You can simplify this code by using defer:
+
+```go
+func DoSomeThings(val1 int, val2 string) (_ string, err error) {
+    defer func() {
+        if err != nil {
+            err = fmt.Errorf("in DoSomeThings: %w", err)
+        }
+    }()
+    val3, err := doThing1(val1)
+    if err != nil {
+        return "", err
+    }
+    val4, err := doThing2(val2)
+    if err != nil {
+        return "", err
+    }
+    return doThing3(val3, val4)
+}
+```
+
+In the defer closure, the code checks whether an error was returned. If so, it reassigns the error to a new error that wraps the original error with a message indicating which function detected the error.
+
+### panic and recover
+
+A panic is similar to an Error in Java or Python. It is a state generated by the Go runtime whenever it is unable to figure out what should happen next.
+As soon as a panic happens, the current function exits immediately, and any defers attached to the current function start running. If there is a panic in a goroutine other than the main goroutine, the chain of defers ends at the function used to launch the goroutine.
+If any situations in your programs are unrecoverable, you can create your own panics.
+
+```go
+func doPanic(msg string) {
+    panic(msg)
+}
+
+func main() {
+    doPanic(os.Args[0])
+}
+```
+
+The built-in recover function is called from within a defer to check whether a panic happened. If there was a panic, the value assigned to the panic is returned. Once a recover happens, execution continues normally. You **must** call recover from within a defer because once a panic happens, only deferred functions are run
+
+```go
+func div60(i int) {
+    defer func() {
+        if v := recover(); v != nil {
+            fmt.Println(v)
+        }
+    }()
+    fmt.Println(60 / i)
+}
+
+func main() {
+    for _, val := range []int{1, 2, 0, 6} {
+        div60(val)
+    }
+}
+```
+
+The reason you don’t rely on panic and recover is that recover doesn’t make clear what could fail. It just ensures that if something fails, you can print out a message and continue. Idiomatic Go favors code that explicitly outlines the possible failure conditions over shorter code that handles anything while saying nothing.
+Using recover is recommended **in one situation**. If you are creating a library for third parties, do not let panics escape the boundaries of your public API. If a panic is possible, a public function should use recover to convert the panic into an error, return it, and let the calling code decide what to do with them.
+
+### Getting a Stack Trace from an Error
+
+By default, Go doesn’t provide that. You can use error wrapping to build a call stack by hand but some third-party libraries with error types generate those stacks automatically (like [errors](https://github.com/cockroachdb/errors))
