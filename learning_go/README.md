@@ -60,6 +60,12 @@
     - [Wrapping Errors with defer](#wrapping-errors-with-defer)
     - [panic and recover](#panic-and-recover)
     - [Getting a Stack Trace from an Error](#getting-a-stack-trace-from-an-error)
+  - [Modules, Packages, and Imports](#modules-packages-and-imports)
+    - [Using go.mod](#using-gomod)
+    - [Building Packages](#building-packages)
+    - [Overriding package's name](#overriding-packages-name)
+    - [Documenting Your Code with Go Doc Comments](#documenting-your-code-with-go-doc-comments)
+    - [Using the internal Package](#using-the-internal-package)
 
 
 ## Built-in types and variables
@@ -1643,3 +1649,148 @@ Using recover is recommended **in one situation**. If you are creating a library
 ### Getting a Stack Trace from an Error
 
 By default, Go doesn’t provide that. You can use error wrapping to build a call stack by hand but some third-party libraries with error types generate those stacks automatically (like [errors](https://github.com/cockroachdb/errors))
+
+## Modules, Packages, and Imports
+
+Library management in Go is based around three concepts:
+* repositories: a place in a version control system where the source code for a project is stored
+* modules: a bundle of Go source code that’s distributed and versioned as a single unit
+* packages: Modules consist of one or more packages, which are directories of source code. Packages give a module organization and structure.
+
+> [!NOTE]
+> While you can store more than one module in a repository, it is discouraged. Everything
+> within a module is versioned together. Maintaining two modules in one repository requires
+> you to track separate versions for two different modules in a single repository.
+
+Before using code from packages outside the standard library, you need to make sure that you have a properly created module. Every module has a globally unique identifier. In Go, this name is called a module path. It is usually based on the repository where the module is stored. For example, you can find Proteus, a module I wrote to simplify relational database access in Go, at https://github.com/jonbodner/proteus. It has a module path of github.com/jonbodner/proteus.
+
+
+### Using go.mod
+
+ directory tree of Go source code becomes a module when there’s a valid go.mod file in it. Rather than create this file manually, use the `go mod init MODULE_PATH`.
+ Every go.mod file starts with a module directive that consists of the word module and the module’s unique path. Next, the go.mod file specifies the minimum compatible version of Go with the go directive.
+
+```module
+module github.com/learning-go-book-2e/money
+
+go 1.21
+
+require (
+    github.com/learning-go-book-2e/formatter v0.0.0-20220918024742-18...
+    github.com/shopspring/decimal v1.3.1
+)
+
+require (
+    github.com/fatih/color v1.13.0 // indirect
+    github.com/mattn/go-colorable v0.1.9 // indirect
+    github.com/mattn/go-isatty v0.0.14 // indirect
+    golang.org/x/sys v0.0.0-20210630005230-0f9fa26af87c // indirect
+)
+```
+
+ If you have Go 1.20 or earlier installed, the newer Go version is ignored and you get the features of the installed version. If you have Go 1.21 or newer installed, the default behavior is to download the newer version of Go and use it to build your code. You can control this behavior in Go 1.21 and newer with the toolchain directive and the `GOTOOLCHAIN` environment variable (eg `GOTOOLCHAIN=go1.18 go build` will build your Go program with Go 1.18). If both the GOTOOLCHAIN environment variable and the toolchain directive are set, the value assigned to GOTOOLCHAIN is used.
+ The require directives are present only if your module has dependencies. The first require section lists the direct dependencies of your module. The second one lists the dependencies of the dependencies of your module.
+
+ ### Building Packages
+
+Go’s `import` statement allows you to access exported constants, variables, functions, and types in another package. Rather than use a special keyword, Go uses **capitalization** to determine whether a package-level identifier is visible outside the package where it is declared. An identifier whose name starts with an uppercase letter is exported. Conversely, an identifier whose name starts with a lowercase letter or underscore can be accessed only from within the package where it is declared.
+
+```go
+import (
+    "fmt"
+
+    "github.com/learning-go-book-2e/package_example/do-format"
+    "github.com/learning-go-book-2e/package_example/math"
+)
+
+func main() {
+    num := math.Double(2)
+    output := format.Number(num)
+    fmt.Println(output)
+}
+```
+
+The import path consists of the module path followed by the path to the package within the module. For example, the import `"github.com/learning-go-book-2e/package_example/math"` has the module path `github.com/learning-go-book-2e/package_example`, while `/math` is the path to the package within the module.
+Every Go file in a directory must have an identical package clause. **The name of a package is determined by its package clause, not its import path**. As a general rule, you should make the name of the package match the name of the directory that contains the package.
+
+### Overriding package's name
+
+```go
+import (
+    crand "crypto/rand"
+    "encoding/binary"
+    "fmt"
+    "math/rand"
+)
+
+func seedRand() *rand.Rand {
+    var b [8]byte
+    _, err := crand.Read(b[:])
+    if err != nil {
+        panic("cannot seed with cryptographic random number generator")
+    }
+    r := rand.New(rand.NewSource(int64(binary.LittleEndian.Uint64(b[:]))))
+    return r
+}
+```
+
+Declaring variables, types, or functions with the same name as a package makes the package inaccessible within the block with that declaration.
+
+### Documenting Your Code with Go Doc Comments
+
+Here are the rules:
+
+- Place the comment directly before the item being documented, with no blank lines between the comment and the declaration of the item.
+- Start each line of the comment with double slashes (//), followed by a space. While it’s legal to use /* and */ to mark your comment block, it is idiomatic to use double slashes.
+- The first word in the comment for a symbol (a function, type, constant, variable, or method) should be the name of the symbol. You can also use “A” or “An” before the symbol name to help make the comment text grammatically correct.
+- Use a blank comment line (double slashes and a newline) to break your comment into multiple paragraphs.
+
+If you want to make your documents look a little snazzier, there are a couple of ways to format it:
+
+- If you want your comment to contain some preformatted content (such as a table or source code), put an additional space after the double slashes to indent the lines with the content.
+- If you want a header in your comment, put a # and a space after the double slashes. Unlike with Markdown, you cannot use multiple # characters to make different levels of headers.
+- To make a link to another package (whether or not it is in the current module), put the package path within brackets ([ and ]).
+- To link to an exported symbol, place its name in brackets. If the symbol is in another package, use [pkgName.SymbolName].
+- If you include a raw URL in your comment, it will be converted into a link.
+- If you want to include text that links to a web page, put the text within brackets ([ and ]). At the end of the comment block, declare the mappings between your text and their URLs with the format // [TEXT]: URL. You’ll see a sample of this in a moment.
+
+Comments before the package declaration create package-level comments. If you have lengthy comments for the package (such as the extensive formatting documentation in the fmt package), the convention is to put the comments in a file in your package called doc.go.
+
+```go
+// Money represents the combination of an amount of money
+// and the currency the money is in.
+//
+// The value is stored using a [github.com/shopspring/decimal.Decimal]
+type Money struct {
+    Value    decimal.Decimal
+    Currency string
+}
+
+// Convert converts the value of one currency to another.
+//
+// It has two parameters: a Money instance with the value to convert,
+// and a string that represents the currency to convert to. Convert returns
+// the converted currency and any errors encountered from unknown or unconvertible
+// currencies.
+//
+// If an error is returned, the Money instance is set to the zero value.
+//
+// Supported currencies are:
+//   - USD - US Dollar
+//   - CAD - Canadian Dollar
+//   - EUR - Euro
+//   - INR - Indian Rupee
+//
+// More information on exchange rates can be found at [Investopedia].
+//
+// [Investopedia]: https://www.investopedia.com/terms/e/exchangerate.asp
+func Convert(from Money, to string) (Money, error) {
+    // ...
+}
+```
+
+Go includes a command-line tool called go doc that displays godocs. The command go doc PACKAGE_NAME displays the documentation for the specified package and a list of the identifiers in the package. Use go doc PACKAGE_NAME.IDENTIFIER_NAME to display the documentation for a specific identifier in the package.
+If you want to preview your documentation’s HTML formatting before it is published on the web, use pkgsite: `go install golang.org/x/pkgsite/cmd/pkgsite@latest`. To view your source code’s comments rendered as HTML, go to the root of your module and run `pkgsite`. Then go to http://localhost:8080 to view your project and its source code.
+
+### Using the internal Package
+
